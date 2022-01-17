@@ -3,13 +3,13 @@ from setuptools import setup
 setup(
     name='pytima',
     version='0.0.1',    
-    description='A example Python package',
-    url='https://github.com/shuds13/pyexample',
+    description='Reads tescan tima mindif data structures',
+    url='https://github.com/BenFGA/pytima',
     author='Ben Chi',
     author_email='ben@fractalgeoanalytics.com',
     license='MIT',
     packages=['pytima'],
-    install_requires=['numpy'],
+    install_requires=['numpy','scikit-image','matplotlib','pandas'],
 
     classifiers=[
         'Development Status :: 1 - Planning',
