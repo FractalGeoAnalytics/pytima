@@ -185,7 +185,6 @@ def _fields_to_sample(tima_locations, phase_info, fields):
         xrange = np.arange(locs[0][0], locs[0][0] + dim_png) + big_dim[0] // 2
         yrange = np.arange(locs[0][1], locs[0][1] + dim_png) + big_dim[1] // 2
         idx_img = np.ix_(yrange, xrange)
-        print(f)
         try:
             phases[idx_img] = np.fliplr(fields[f]["phases"])
         except:
