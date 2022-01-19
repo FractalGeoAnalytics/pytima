@@ -18,9 +18,10 @@ class Scan:
     field_info: Any
     phases: pd.DataFrame
     fields: "dict[str,dict[str,np.ndarray]]"
-    measurements: "dict[str,dict[str,str]]"
+    measurements:"dict[str,Union[str, int]]"
     sample:"dict[str, np.ndarray]"
-    _int_map:"dict[str,Type[int]]" = {'ViewField':int, 'ImageWidth':int,'ImageHeight':int, 'SampleDiamter':int} 
+    xml_namespace:str
+    _int_map:"dict[str,Type[int]]" = {'ViewField':int, 'ImageWidth':int,'ImageHeight':int, 'SampleDiameter':int} 
 
     def __init__(
         self,
@@ -30,8 +31,9 @@ class Scan:
         field_info: Any,
         phases: pd.DataFrame,
         fields: "dict[str,dict[str,np.ndarray]]",
-        measurements:"dict[str,dict[str,str]]",
-        sample:"dict[str, np.ndarray]"
+        measurements:"dict[str,Union[str, int]]",
+        sample:"dict[str, np.ndarray]",
+        xml_ns:str
     ):
         self.uuid = uuid
         self.name = name
@@ -39,16 +41,26 @@ class Scan:
         self.field_info = field_info
         self.phases = phases
         self.fields = fields
-        self.measurements = measurements
         self.sample = sample
+        self.xml_namespace = xml_ns
+        val:int
+        for key in self._int_map:
+            val = int(measurements[key])
+            measurements[key] = val
+        self.measurements = measurements
+
 
     def __repr__(self):
         outstr = f"Sample uuid:{self.uuid}\nSample Name:{self.name}"
         return outstr
-
+    def plotScan(self,type:str='bse'):
+        plt.imshow(self.sample[type])
+        plt.show()
 
 def read(foldername: Union[Path, str]) -> Scan:
-    """the tima data structure is relatively complex and requires a lot of decoding
+    """the tima data structure is a heirarcy of nested folders conforming to the following
+    structure
+    NAME
     here is the top level function that calls everything required to reconstruct the TIMA data
     to something that can be used for processing
     """
@@ -73,10 +85,10 @@ def read(foldername: Union[Path, str]) -> Scan:
 
     field_info = _read_field_info(basepath)
     phases = _read_phases(basepath)
-    measurements = _read_measurement(basepath)
+    xml_ns,measurements = _read_measurement(basepath)
     fields = _read_fields(basepath)
-    sample = _fields_to_sample(field_info, phases,fields)
-    sf = Scan(uuid_str, foldername.stem, basepath, field_info, phases, fields,measurements,sample)
+    sample = _fields_to_sample(field_info, phases,fields,measurements)
+    sf = Scan(uuid_str, foldername.stem, basepath, field_info, phases, fields,measurements,sample,xml_ns)
     return sf
 
 
@@ -121,24 +133,22 @@ def _read_measurement(basepath: Path) -> Tuple[str, "dict[str, dict[str, str]]"]
     """reads the measurement file and converts to and pd.DataFrame"""
     filename: Path = basepath.joinpath("measurement.xml")
     tree:ET.ElementTree= ET.parse(filename)
-    tmp:dict[str,str] = {}
     xmlns:str = "http://www.tescan.cz/tima/1_4"
     key:str
     val:str
+    measurements:dict[str, str]={}
     for i in tree.iter():
         key = i.tag
         key = key.replace('{'+xmlns+'}','')
         val = i.text
-        tmp.update({key: val})
-    measurements: dict[str, dict[str, str]] = {}
-    measurements.update({xmlns:tmp})
+        measurements.update({key: val})
     return xmlns, measurements
 
 
-def _read_fields(basepath: Path) -> "dict[str:dict[str:np.ndarray]]":
+def _read_fields(basepath: Path) -> "dict[str,dict[str,np.ndarray]]":
     """reads the field information consisting of the bse, mask and phases images"""
     field_path: str = os.path.join(basepath, "fields")
-    folders: str = os.listdir(field_path)
+    folders: list[str] = os.listdir(field_path)
     file_types: dict[str, str] = {
         "phases": "phases.tif",
         "bse": "bse.png",
@@ -160,31 +170,34 @@ def _read_fields(basepath: Path) -> "dict[str:dict[str:np.ndarray]]":
     return fields
 
 
-def _fields_to_sample(tima_locations, phase_info, fields):
+def _fields_to_sample(tima_locations:pd.DataFrame, phase_info:pd.DataFrame, fields:"dict[str,dict[str,np.ndarray]]",measurement:"dict[str,Union[str, int]]") -> "dict[str,np.ndarray]":
     """converts the fields to a set of images that cover the entire sample
     each of the data types is inserted into it's own larger array
     """
+    field_height:int = measurement['ImageHeight']
+    field_width:int = measurement['ImageWidth']
+    # calculate the number of fields taken across the sample
+    steps = (tima_locations[["x", "y"]] / [field_width, field_height])
 
-    minl = tima_locations[["x", "y"]].min()
-    maxl = tima_locations[["x", "y"]].max()
-    tima_locations[["x", "y"]].max() - tima_locations[["x", "y"]].min()
-    n_steps = ((maxl - minl)) / 760 + 1
-    dim_png = 150
-    orig = (tima_locations[["x", "y"]] / 760) * 150
-    mino = orig.min()
-    maxo = orig.max()
-    maxdim = (maxo - mino) + dim_png * 2
-    phases = np.zeros(np.int32(maxdim.values))
-    mask = np.zeros(np.int32(maxdim.values))
-    bse = np.zeros(np.int32(maxdim.values))
+    # extract the outer dimensions of the sample
+    # at that point we can then calculate where each image needs to sit inside the larger array
+    min_x:int = int(steps['x'].min())
+    min_y:int = int(steps['y'].min())
+    mino:np.ndarray = steps.min().values
+    maxo:np.ndarray = steps.max().values
+    maxdim:np.ndarray = (maxo - mino) * field_height * 2
+    
+    phases:np.ndarray = np.zeros(np.int32(maxdim.values))
+    mask:np.ndarray = np.zeros(np.int32(maxdim.values))
+    bse:np.ndarray = np.zeros(np.int32(maxdim.values))
 
     big_dim = phases.shape
     for f in fields:
         idx = tima_locations.name == f
-        locs = np.int32(orig[idx])
-        xrange = np.arange(locs[0][0], locs[0][0] + dim_png) + big_dim[0] // 2
-        yrange = np.arange(locs[0][1], locs[0][1] + dim_png) + big_dim[1] // 2
-        idx_img = np.ix_(yrange, xrange)
+        locs:np.ndarray = np.int32(steps[idx])
+        xrange:np.ndarray = np.arange(locs[0][0], locs[0][0] + dim_png) + big_dim[0] // 2
+        yrange:np.ndarray = np.arange(locs[0][1], locs[0][1] + dim_png) + big_dim[1] // 2
+        idx_img:np.ndarray = np.ix_(yrange, xrange)
         try:
             phases[idx_img] = np.fliplr(fields[f]["phases"])
         except:
@@ -197,11 +210,11 @@ def _fields_to_sample(tima_locations, phase_info, fields):
             bse[idx_img] = np.fliplr(fields[f]["bse"])
         except:
             pass
-    array_shape = np.int32(maxdim.values)
-    phases_rgb = np.zeros(np.append(array_shape, 3))
+    array_shape:np.ndarray = np.int32(maxdim.values)
+    phases_rgb:np.ndarray = np.zeros(np.append(array_shape, 3))
     # map to the right colors
-    rgb = np.stack(phase_info.rgb.values)
-    ids = phase_info.id.values
+    rgb:np.ndarray = np.stack(phase_info.rgb.values)
+    ids:np.ndarray = phase_info.id.values
     for i in ids:
         tidx = phases == i
         cidx = ids == i
