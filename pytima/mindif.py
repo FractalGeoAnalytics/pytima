@@ -54,7 +54,7 @@ class Scan:
         outstr = f"Sample uuid:{self.uuid}\nSample Name:{self.name}"
         return outstr
     def plotScan(self,type:str='bse'):
-        plt.imshow(self.sample[type])
+        plt.imshow(self.sample[type],aspect='equal')        
         plt.show()
 
 def read(foldername: Union[Path, str]) -> Scan:
@@ -170,34 +170,54 @@ def _read_fields(basepath: Path) -> "dict[str,dict[str,np.ndarray]]":
     return fields
 
 
-def _fields_to_sample(tima_locations:pd.DataFrame, phase_info:pd.DataFrame, fields:"dict[str,dict[str,np.ndarray]]",measurement:"dict[str,Union[str, int]]") -> "dict[str,np.ndarray]":
+def _fields_to_sample(field_info:pd.DataFrame, phase_info:pd.DataFrame, fields:"dict[str,dict[str,np.ndarray]]",measurement:"dict[str,Union[str, int]]") -> "dict[str,np.ndarray]":
     """converts the fields to a set of images that cover the entire sample
     each of the data types is inserted into it's own larger array
     """
-    field_height:int = measurement['ImageHeight']
-    field_width:int = measurement['ImageWidth']
+    field_height:int = int(measurement['ImageHeight'])
+    field_width:int = int(measurement['ImageWidth'])
     # calculate the number of fields taken across the sample
-    steps = (tima_locations[["x", "y"]] / [field_width, field_height])
+    # you can't use the field dimensions so you need to calculate that from the locations table
 
+    # get the step interval from the field locations
+    x_step_size:int = np.max(np.unique(np.diff(np.sort(field_info['x'].values))))
+    y_step_size:int = np.max(np.unique(np.diff(np.sort(field_info['y'].values))))
+
+    steps = (field_info[["x", "y"]] / [x_step_size, y_step_size])
+    # calculate the absolute steps from 0 as we end up with wrapping
+    # so the simple process is to add a bias so that all steps start from 0
+    # not negative
+    
     # extract the outer dimensions of the sample
     # at that point we can then calculate where each image needs to sit inside the larger array
-    min_x:int = int(steps['x'].min())
-    min_y:int = int(steps['y'].min())
-    mino:np.ndarray = steps.min().values
-    maxo:np.ndarray = steps.max().values
-    maxdim:np.ndarray = (maxo - mino) * field_height * 2
-    
-    phases:np.ndarray = np.zeros(np.int32(maxdim.values))
-    mask:np.ndarray = np.zeros(np.int32(maxdim.values))
-    bse:np.ndarray = np.zeros(np.int32(maxdim.values))
+    max_x_step:int = (int(steps['x'].max())*2)+1
+    max_y_step:int = (int(steps['y'].max())*2)+1
 
-    big_dim = phases.shape
-    for f in fields:
-        idx = tima_locations.name == f
-        locs:np.ndarray = np.int32(steps[idx])
-        xrange:np.ndarray = np.arange(locs[0][0], locs[0][0] + dim_png) + big_dim[0] // 2
-        yrange:np.ndarray = np.arange(locs[0][1], locs[0][1] + dim_png) + big_dim[1] // 2
-        idx_img:np.ndarray = np.ix_(yrange, xrange)
+    x_dim:int = (max_x_step*field_width)
+    y_dim:int = (max_y_step*field_height) 
+
+    steps['x'] = steps['x']+max_x_step//2
+    steps['y'] = steps['y']+max_y_step//2
+    phases:np.ndarray = np.zeros((x_dim, y_dim))
+    mask:np.ndarray   = np.zeros((x_dim, y_dim))
+    bse:np.ndarray    = np.zeros((x_dim, y_dim))
+    fieldim:np.ndarray    = np.zeros((x_dim, y_dim))
+
+
+    idx:np.ndarray
+    xrange:np.ndarray
+    yrange:np.ndarray
+    idx_img:np.ndarray
+    iter = 1
+    for f in field_info.name.values:
+        idx = field_info.name.values == f
+        locs = np.int32(steps[idx])
+        xrange = np.arange(0,field_width)+(field_width*locs[0][0])
+        yrange = np.arange(0,field_height)+(field_height*locs[0][1])
+        #xrange = np.arange(locs[0][0], locs[0][0] + dim_png) + big_dim[0] // 2
+        #yrange = np.arange(locs[0][1], locs[0][1] + dim_png) + big_dim[1] // 2
+        idx_img = np.ix_(yrange, xrange)
+        fieldim[idx_img] = iter
         try:
             phases[idx_img] = np.fliplr(fields[f]["phases"])
         except:
@@ -210,8 +230,11 @@ def _fields_to_sample(tima_locations:pd.DataFrame, phase_info:pd.DataFrame, fiel
             bse[idx_img] = np.fliplr(fields[f]["bse"])
         except:
             pass
-    array_shape:np.ndarray = np.int32(maxdim.values)
-    phases_rgb:np.ndarray = np.zeros(np.append(array_shape, 3))
+        
+        iter=iter+1
+    
+
+    phases_rgb:np.ndarray = np.zeros((x_dim, y_dim,3))
     # map to the right colors
     rgb:np.ndarray = np.stack(phase_info.rgb.values)
     ids:np.ndarray = phase_info.id.values
@@ -221,3 +244,9 @@ def _fields_to_sample(tima_locations:pd.DataFrame, phase_info:pd.DataFrame, fiel
         phases_rgb[tidx] = rgb[cidx, :]
 
     return {"phases": phases, "phases_rgb": phases_rgb, "bse": bse, "mask": mask}
+
+if __name__ == '__main__':
+    from pathlib import Path
+    import mindif
+    foldername = Path('data/IECUR00A7.mindif')
+    mindif.read(foldername)
