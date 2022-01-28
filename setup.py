@@ -9,7 +9,7 @@ setup(
     author_email='ben@fractalgeoanalytics.com',
     license='MIT',
     packages=['pytima'],
-    install_requires=['numpy','scikit-image','matplotlib','pandas'],
+    install_requires=['numpy','scikit-image','matplotlib','pandas','imagecodecs'],
 
     classifiers=[
         'Development Status :: 1 - Planning',

@@ -68,7 +68,14 @@ def read(foldername: Union[Path, str]) -> Scan:
     if isinstance(foldername, str):
         foldername = Path(foldername)
 
+    # version 1.4.1+ has the mindif folder but you can't work that out unless you read the measurements.xml    
+    # version below 1.4.0.8 has no mindif folder
+
     next_folder: Path = foldername.joinpath("mindif")
+    if not next_folder.exists():
+        # this is madness
+        next_folder: Path = foldername
+        
     # extract the uuid for the scan I assume that in a single mindif structure there is only a single scan
     # uuid never more than one
     uuid_str: str = ''
@@ -147,8 +154,8 @@ def _read_measurement(basepath: Path) -> Tuple[str, "dict[str, dict[str, str]]"]
 
 def _read_fields(basepath: Path) -> "dict[str,dict[str,np.ndarray]]":
     """reads the field information consisting of the bse, mask and phases images"""
-    field_path: str = os.path.join(basepath, "fields")
-    folders: list[str] = os.listdir(field_path)
+    field_path: Path = basepath.joinpath("fields")
+    folders: Path = field_path.iterdir()
     file_types: dict[str, str] = {
         "phases": "phases.tif",
         "bse": "bse.png",
@@ -157,16 +164,17 @@ def _read_fields(basepath: Path) -> "dict[str,dict[str,np.ndarray]]":
     fields: "dict[str,dict[str,np.ndarray]]" = {}
     tmp_dict: "dict[str,np.ndarray]"
     tmp_im: np.ndarray
+    fullfile:Path
     for f in folders:
         tmp_dict = {}
         for t in file_types:
-            fullfile = os.path.join(field_path, f, file_types[t])
-            if os.path.exists(fullfile):
+            fullfile = f.joinpath(file_types[t])
+            if fullfile.exists():
                 tmp_im: np.ndarray = io.imread(fullfile)
                 tmp_dict.update({t: tmp_im})
             else:
-                print(f"missing: {fullfile}")
-        fields.update({f: tmp_dict})
+                print(f"missing: {fullfile.parts[-2]} {fullfile.stem}")
+        fields.update({f.parts[-1]: tmp_dict})
     return fields
 
 
