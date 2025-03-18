@@ -2,6 +2,7 @@ from pytima import mindif
 import urllib.request
 from pathlib import Path
 import shutil
+
 # path to open file data scanned by
 # John de Laeter Research Centre 
 # https://jdlc.curtin.edu.au/
@@ -13,6 +14,6 @@ outfile = Path(urlpath).name
 with open(outfile,'wb') as out:
     out.write(byte_string)
 
-shutil.unpack_archive(outfile)
+shutil.unpack_archive(outfile,extract_dir='IECUR00A7')
 
-mindif.read(outfile)
+mindif.read('IECUR00A7')

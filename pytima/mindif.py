@@ -110,8 +110,9 @@ def _read_field_info(basepath: Path) -> pd.DataFrame:
     tree = ET.parse(filename)
     root = tree.getroot()
     items: "list[dict[str,str]" = []
-    for i in list(root.getchildren())[1].getchildren():
-        items.append(i.attrib)
+    for i in root:
+        for j in i:
+            items.append(j.attrib)
 
     tima_locations: pd.DataFrame = pd.DataFrame(items)
     # ensure that the data is ints as the file read 
@@ -125,9 +126,10 @@ def _read_phases(basepath: Path) -> pd.DataFrame:
     filename: Path = basepath.joinpath("phases.xml")
     tree = ET.parse(filename)
     root = tree.getroot()
-    items = []
-    for i in list(root.getchildren())[0].getchildren():
-        items.append(i.attrib)
+    items :"list[dict[str,str]" = []
+    for i in root:
+        for j in i:
+            items.append(j.attrib)
     phases = pd.DataFrame(items)
     phases["rgb"] = phases.color.map(matplotlib.colors.to_rgb)
     # ensure that we have ints as we need this later on for processing 
