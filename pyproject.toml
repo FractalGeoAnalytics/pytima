@@ -1,0 +1,15 @@
+[project]
+name = "pytima"
+version = "0.0.2"
+description='Reads tescan tima mindif data structures'
+dependencies = ['numpy','scikit-image','matplotlib','pandas','imagecodecs']
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+dev-dependencies = ["black"]
+
+[author]
+author='Ben Chi'
+url='https://github.com/BenFGA/pytima'
+author_email='ben@fractalgeoanalytics.com'
